@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>Questionnaire Upload</title>
+  <script src="setting.js"></script>
+  <script src="Cookie.js"></script>
+  <script src="dateTime.js"></script>
+  <script src="HTTP2024.js"></script>
+</head>
+<body style="height: 780px">
+  <h1>問卷回應</h1>
+
+  <div>
+    <label for="questionnaire-id">Questionnaire ID:</label>
+    <input type="text" id="questionnaire-id" name="questionnaire-id">
+    <button onclick="loadQuestionnaire()">Load Questionnaire</button>
+  </div>
+
+  <div>
+    <label for="patient-id">Patient ID:</label>
+    <input type="text" id="patient-id" name="patient-id">
+  </div>
+
+  <div id="questionnaire-container"></div>
+  <div style="margin-top: 10px; text-align: left;">
+    <button id="submit-button" onclick="submitResponse()" style="display: none;">Submit Response</button>
+  </div>
+
+  <div id="response-container" style="margin-top: 20px;"></div>
+
+  <script>
+    var questionnaire;
+
+    function loadQuestionnaire() {
+      const questionnaireId = document.getElementById('questionnaire-id').value;
+      const apiURL = `https://hapi.fhir.tw/fhir/Questionnaire/${questionnaireId}`;
+      sendHttpGet(apiURL, function (ret) {
+        questionnaire = JSON.parse(ret);
+        const container = document.getElementById('questionnaire-container');
+        container.innerHTML = '';
+        renderItems(questionnaire.item, container);
+        document.getElementById('submit-button').style.display = 'block';
+      });
+    }
+
+    function renderItems(items, container) {
+      items.forEach(item => {
+        const wrapper = document.createElement('div');
+        wrapper.style.marginLeft = '1em';
+
+        if (item.text) {
+          const label = document.createElement('p');
+          label.innerText = item.text;
+          wrapper.appendChild(label);
+        }
+
+        if (item.type === 'group' && item.item) {
+          renderItems(item.item, wrapper);
+        } else {
+          if (item.type === 'boolean') {
+            const yesRadio = document.createElement('input');
+            yesRadio.type = 'radio';
+            yesRadio.name = `question_${item.linkId}`;
+            yesRadio.value = "true";
+            const yesLabel = document.createElement('label');
+            yesLabel.innerHTML = "Yes: ";
+            yesLabel.appendChild(yesRadio);
+
+            const noRadio = document.createElement('input');
+            noRadio.type = 'radio';
+            noRadio.name = `question_${item.linkId}`;
+            noRadio.value = "false";
+            const noLabel = document.createElement('label');
+            noLabel.innerHTML = "No: ";
+            noLabel.appendChild(noRadio);
+
+            wrapper.appendChild(yesLabel);
+            wrapper.appendChild(noLabel);
+          } else if (item.type === 'string') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = `question_${item.linkId}`;
+            wrapper.appendChild(input);
+          } else if (item.type === 'choice' && item.repeats) {
+            item.answerOption.forEach(opt => {
+              const checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.name = `question_${item.linkId}`;
+              checkbox.value = opt.valueCoding.code || opt.valueCoding.display;
+              const label = document.createElement('label');
+              label.innerText = opt.valueCoding.display;
+              label.appendChild(checkbox);
+              wrapper.appendChild(label);
+              wrapper.appendChild(document.createElement('br'));
+            });
+          } else if (item.type === 'choice') {
+            item.answerOption.forEach(opt => {
+              const radio = document.createElement('input');
+              radio.type = 'radio';
+              radio.name = `question_${item.linkId}`;
+              radio.value = opt.valueCoding.code || opt.valueCoding.display;
+              const label = document.createElement('label');
+              label.innerText = opt.valueCoding.display;
+              label.appendChild(radio);
+              wrapper.appendChild(label);
+              wrapper.appendChild(document.createElement('br'));
+            });
+          } else if (item.type === 'integer') {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.name = `question_${item.linkId}`;
+            wrapper.appendChild(input);
+          }
+        }
+
+        container.appendChild(wrapper);
+      });
+    }
+
+    function submitResponse() {
+      const patientId = document.getElementById('patient-id').value;
+      const response = {
+        resourceType: 'QuestionnaireResponse',
+        status: 'completed',
+        questionnaire: `Questionnaire/${document.getElementById('questionnaire-id').value}`,
+        subject: { reference: `Patient/${patientId}` },
+        authored: new Date().toISOString(),
+        item: buildResponseItems(questionnaire.item)
+      };
+
+      const jsonStr = JSON.stringify(response, null, 2);
+      const apiURL = FHIRrootURL + 'QuestionnaireResponse';
+      sendHttpPost(apiURL, jsonStr, callBack);
+    }
+
+    function buildResponseItems(items) {
+      return items.map(item => {
+        if (item.type === 'group' && item.item) {
+          return {
+            linkId: item.linkId,
+            text: item.text,
+            item: buildResponseItems(item.item)
+          };
+        } else {
+          const selector = (item.type === 'boolean' || item.type === 'choice') ? ':checked' : '';
+          const elements = document.querySelectorAll(`[name=question_${item.linkId}]${selector}`);
+          if (!elements.length) return null;
+
+          const answers = Array.from(elements).map(el => {
+            if (item.type === 'boolean') {
+              return { valueBoolean: el.value === 'true' };
+            } else if (item.type === 'string') {
+              return { valueString: el.value };
+            } else if (item.type === 'integer') {
+              return { valueInteger: parseInt(el.value, 10) };
+            } else if (item.type === 'choice') {
+              const opt = item.answerOption.find(o => o.valueCoding.code === el.value || o.valueCoding.display === el.value);
+              return {
+                valueCoding: {
+                  code: opt?.valueCoding.code || el.value,
+                  display: opt?.valueCoding.display || el.value
+                }
+              };
+            }
+          });
+
+          return { linkId: item.linkId, text: item.text, answer: answers };
+        }
+      }).filter(Boolean);
+    }
+
+    function callBack(ret) {
+      console.log(JSON.stringify(JSON.parse(ret), null, 2));
+      displayResponse(ret);
+    }
+
+    function displayResponse(response) {
+      const parsed = JSON.parse(response);
+      document.getElementById('response-container').innerHTML = `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+    }
+
+    function sendHttpGet(url, callback) {
+      fetch(url)
+        .then(response => response.json())
+        .then(data => callback(JSON.stringify(data)));
+    }
+
+    function sendHttpPost(url, data, callback) {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: data
+      })
+      .then(response => response.json())
+      .then(data => callback(JSON.stringify(data)));
+    }
+  </script>
+</body>
+</html>

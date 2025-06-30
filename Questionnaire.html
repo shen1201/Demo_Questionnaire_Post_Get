@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <title>Questionnaire Upload</title>
+
+  <!-- 引入 PapaParse 用來解析 CSV -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- 引入你原本的函式庫 -->
+  <script src="setting.js"></script>
+  <script src="Cookie.js"></script>
+  <script src="dateTime.js"></script>
+  <script src="HTTP2024.js"></script>
+
+  <script>
+    var jsonObj = {
+      "resourceType": "Questionnaire",
+      "id": "Scen4Questionnaire",
+      "url": "https://",
+      "version": "1.0.1",
+      "status": "active",
+      "subjectType": ["Patient"],
+      "date": "2024-03-12T17:26:10+00:00",
+      "publisher": "Example Publisher",
+      "contact": [{
+        "name": "ExampleQuestionnaire",
+        "telecom": [{
+          "system": "url",
+          "value": "http://www.hl7.org/Special/committees/patientcare"
+        }]
+      }],
+      "jurisdiction": [{
+        "coding": [{
+          "system": "urn:iso:std:iso:3166",
+          "code": "US"
+        }]
+      }],
+      "item": [
+      ]
+    };
+
+    function handleCSV(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          var data = results.data;
+          var itemMap = {};
+
+          data.forEach(function(row, index) {
+            var item = {
+              linkId: row.linkId,
+              text: row.text,
+              type: mapType(row.type)
+            };
+
+            if (item.type === "choice" && row.answerOption) {
+              item.answerOption = row.answerOption.split(";").map(opt => ({
+                valueCoding: { display: opt.trim() }
+              }));
+            }
+
+            if (row.type === "多選") {
+              item.repeats = true;
+            }
+
+            itemMap[row.linkId] = item;
+          });
+
+          jsonObj.item = [];
+          data.forEach(row => {
+            const item = itemMap[row.linkId];
+            const parentId = row.parentLinkId;
+            if (parentId) {
+              const parent = itemMap[parentId];
+              if (!parent.item) parent.item = [];
+              parent.item.push(item);
+            } else {
+              jsonObj.item.push(item);
+            }
+          });
+
+          loadQuestions();
+        }
+      });
+    }
+
+    function mapType(typeText) {
+      switch (typeText.trim()) {
+        case "單選": return "choice";
+        case "多選": return "choice";
+        case "是非題": return "boolean";
+        case "數字": return "integer";
+        case "文字": return "string";
+        case "群組": return "group";
+        default: return "string";
+      }
+    }
+
+
+    function loadQuestions() {
+      const container = document.getElementById('questionnaire');
+      container.innerHTML = "";
+
+      function renderItems(items, indent = 0) {
+        items.forEach((item, index) => {
+          const questionDiv = document.createElement('div');
+          questionDiv.style.marginLeft = indent + "em";
+          questionDiv.innerText = `${item.linkId}. ${item.text}`;
+          container.appendChild(questionDiv);
+
+          // 如果是 group，遞迴處理子題目
+          if (item.type === "group" && item.item) {
+            renderItems(item.item, indent + 2);
+          }
+        });
+      }
+
+      renderItems(jsonObj.item);
+    }
+
+    function postData() {
+      var jsonStr = JSON.stringify(jsonObj);
+      var apiURL = FHIRrootURL + "Questionnaire";
+      sendHttpPost(apiURL, jsonStr, callBack);
+    }
+
+    function callBack(ret) {
+      console.log(ret);
+      displayResponse(ret);
+    }
+
+    function displayResponse(response) {
+      var responseContainer = document.getElementById('response');
+      responseContainer.innerHTML = "<pre>" + JSON.stringify(JSON.parse(response), null, 2) + "</pre>";
+    }
+  </script>
+</head>
+<body>
+  <h2>問卷 CSV 上傳轉 FHIR Questionnaire</h2>
+  <p>請選擇問卷 CSV 檔：</p>
+  <input type="file" id="csvFile" accept=".csv" onchange="handleCSV(event)" /><br /><br />
+
+  <div id="questionnaire" style="margin-bottom: 20px;"></div>
+  <input type="button" value="上傳" onclick="postData()" /><br />
+
+  <div id="response" style="margin-top: 20px;"></div>
+</body>
+</html>

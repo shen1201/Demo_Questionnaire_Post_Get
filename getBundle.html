@@ -1,0 +1,78 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title> Get FHIR Resource</title>
+ 	<script src="setting.js"></script>
+    <script src="HTTP2024.js"></script>
+    <style type="text/css">
+        body{width:1024px;font-size:17px;}
+        #Title{margin:5px auto;padding:15px 25px;width:90%;border-left:10px solid #ff6a00;font-size:27px;font-weight:bold;}
+        .Step{margin:10px auto;width:93%;}
+        .Title{margin:5px auto;width:95%;font-size:21px;font-weight:bold;}
+        .Content{margin:10px auto;width:86%;font-size:17px;}
+        input[type=text]{padding:10px;width:85%;font-size:17px;}
+        input[type=button]{margin:10px auto;padding:10px 0;width:17%;font-size:15px;}
+        select{margin:10px;padding:10px;font-size:17px;}
+        #Step2 input{width:23%;}
+        #Step3 input[type=text]{margin:10px;width:77%;}
+        textarea{padding:13px;width:95%;min-height:350px;font-size:17px;}
+    </style>
+</head>
+<body>
+    <div id="Title">Get 問卷回應</div>
+    請輸入患者ID: <input type="text" id="PatientID" />  <br/>
+ 
+    <div id="Step4" class="Step">
+        <div class="Content">
+            <input id="Button2" onclick="getData()" type="button" value="Get data" />
+            <div id="ResultTableContainer"></div> <!-- 用來顯示表格 -->
+        </div>
+    </div>
+    <script>
+        function getData() {
+            const PatientID = document.getElementById("PatientID").value;
+            const apiURL = "https://hapi.fhir.tw/fhir/QuestionnaireResponse?subject=Patient/" + PatientID;
+            sendHttpGet(apiURL, callBack);
+        }
+
+  
+function callBack(ret) {
+            const bundle = JSON.parse(ret);
+            if (bundle.resourceType === "Bundle") {
+                const entryCount = bundle.entry.length;
+                let output = `
+                    <table border="1" cellspacing="0" cellpadding="5">
+                        <thead>
+                            <tr>
+                                <th>問卷回應ID</th>
+                                <th>創建日期</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                for (let i = 0; i < entryCount; i++) {
+                    const thisResource = bundle.entry[i].resource;
+                    const questionnaireResponse_id = thisResource.id;
+
+                    const rawDate = thisResource.authored;
+                    const dateObj = new Date(rawDate);
+                    const create_date = `${dateObj.getFullYear()}年${String(dateObj.getMonth() + 1).padStart(2, '0')}月${String(dateObj.getDate()).padStart(2, '0')}日 ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}:${String(dateObj.getSeconds()).padStart(2, '0')}`;
+
+                    output += `
+                        <tr>
+                            <td>${questionnaireResponse_id}</td>
+                            <td>${create_date}</td>
+                        </tr>
+                    `;
+                }
+
+                output += `</tbody></table>`;
+                document.getElementById("ResultTableContainer").innerHTML = output;
+            }
+        }
+ 
+ </script>
+</body>
+</html>

@@ -243,13 +243,7 @@ table.custom-table tr.section-header td {
                         for (let m = 0; m < subAnswers.length; m++) {
                             const subAns = subAnswers[m];
                             if (subAns.valueBoolean !== undefined) {
-                                if(ans.valueBoolean == true){
-                                answerText += "是" + "<br>";
-                                }
-                                else{
-                                    answerText += "否" + "<br>";
-                                }
-                                //subAnswerText += subAns.valueBoolean + "<br>";
+                                subAnswerText += subAns.valueBoolean + "<br>";
                             } else if (subAns.valueString !== undefined) {
                                 subAnswerText += subAns.valueString + "<br>";
                             } else if (subAns.valueCoding?.display !== undefined) {

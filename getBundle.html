@@ -266,13 +266,13 @@ table.custom-table tr.section-header td {
                     for (let j = 0; j < answers.length; j++) {
                         const ans = answers[j];
                         if (ans.valueBoolean !== undefined) {
-                            if(ans.valueBoolean === 'true'){
-                                answerText += "是" + "<br>";
-                            }
-                            else{
-                                answerText += "否" + "<br>";
-                            }
-                            //answerText += ans.valueBoolean + "<br>";
+                            //if(ans.valueBoolean === 'true'){
+                            //    answerText += "是" + "<br>";
+                            //}
+                            //else{
+                            //    answerText += "否" + "<br>";
+                            //}
+                            answerText += ans.valueBoolean + "<br>";
                         } else if (ans.valueString !== undefined) {
                             answerText += ans.valueString + "<br>";
                         } else if (ans.valueCoding?.display !== undefined) {

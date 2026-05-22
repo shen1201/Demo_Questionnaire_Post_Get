@@ -3,7 +3,6 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>Post patient</title>
-   
     <script src="setting.js"></script>
     <script src="HTTP2024.js"></script>
     <script>
@@ -50,11 +49,30 @@
     }    
 
     </script>    
-    
+    <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .question { margin-bottom: 1em; padding: 0.5em; border-left: 3px solid #ccc; }
+    .button {
+      display: inline-block;
+      margin: 0px;
+      padding: 14px 28px;
+      font-size: 18px;
+      background-color: #f6c8a7;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.3s;
+      color: black;
+    }
+    .button:hover {
+      background-color: #005fa3;
+    }
+  </style>
 </head>
 <body style="height: 780px">
+    <a class="button" href="index.html">回選功能頁</a>
 
-    <input id="Button1" onclick="postData()" type="button" value="postData" /> <br/>
+    <h2>建立病患資料</h2>
     <br/>
     Family name: <input type="text" id="familyName" />  <br/> <br/>
     Given name: <input type="text" id="givenName" />  <br/>
@@ -67,6 +85,7 @@
     <br/>
     <div id="output"></div>
     <div id="response" style="margin-top: 20px;"></div>
+    <input id="Button1" onclick="postData()" type="button" value="postData" /> <br/>
 </body>
 
 </html>

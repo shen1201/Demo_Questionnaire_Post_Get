@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8" />
+  <title>FHIR 問卷 CSV 產生器</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; background-color: #f8f9fa; color: #333; }
+    .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { color: #2c3e50; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    
+    .form-group { display: flex; gap: 10px; flex-wrap: wrap; background: #f1f3f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; align-items: center; }
+    .form-group label { font-weight: bold; font-size: 14px; }
+    input, select { padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
+    input[name="text"] { flex: 1; min-width: 200px; }
+    
+    button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+    .btn-add { background-color: #2b8a3e; color: white; }
+    .btn-add:hover { background-color: #237032; }
+    .btn-download { background-color: #1c7ed6; color: white; padding: 12px 24px; font-size: 16px; }
+    .btn-download:hover { background-color: #1864ab; }
+    .btn-delete { background-color: #fa5252; color: white; padding: 4px 8px; font-size: 12px; }
+    .btn-delete:hover { background-color: #e03131; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+    th { background-color: #e9ecef; color: #495057; }
+    tr:hover { background-color: #f8f9fa; }
+    
+    .hint { font-size: 12px; color: #868e96; margin-top: 4px; width: 100%; }
+    .actions-bar { margin-top: 30px; text-align: right; }
+    .group-highlight { color: #1c7ed6; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>FHIR 問卷 CSV 產生器</h2>
+  <p style="color: #666;">在這裡建立你的問卷題目，設定完成後點擊下方按鈕下載 CSV，即可直接上傳至你的問卷轉換系統。</p>
+
+  <!-- 題目輸入表單 -->
+  <div class="form-group">
+    <div>
+      <label>題號 (linkId):</label><br>
+      <input type="text" id="linkId" placeholder="例如: 1 或 1.1" style="width: 100px;">
+    </div>
+    
+    <div>
+      <label>題目文字 (text):</label><br>
+      <input type="text" id="text" placeholder="請輸入題目或大題名稱">
+    </div>
+    
+    <div>
+      <label>題型 (type):</label><br>
+      <select id="type" onchange="toggleOptions()">
+        <option value="文字">文字</option>
+        <option value="數字">數字</option>
+        <option value="是非題">是非題</option>
+        <option value="單選">單選</option>
+        <option value="多選">多選</option>
+        <option value="群組">群組 (用於大題塊/子題目的外殼)</option>
+      </select>
+    </div>
+
+    <div>
+      <label>父題號 (parentLinkId):</label><br>
+      <input type="text" id="parentLinkId" placeholder="無 (若為子題目才填)" style="width: 120px;">
+    </div>
+
+    <div id="optionsParent" style="display: none; width: 100%; margin-top: 10px;">
+      <label>選擇題選項 (answerOption):</label>
+      <input type="text" id="answerOption" placeholder="請用分號隔開，例如：良好;普通;差" style="width: 80%;">
+      <div class="hint">每個選項之間請嚴格使用「英文分號 (;)」隔開</div>
+    </div>
+
+    <div style="width: 100%; text-align: right; margin-top: 10px;">
+      <button type="button" class="btn-add" onclick="addQuestion()">＋ 新增題目到清單</button>
+    </div>
+  </div>
+
+  <!-- 預覽表格 -->
+  <h3>目前問卷結構預覽</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 10%;">題號 (linkId)</th>
+        <th style="width: 15%;">父題號 (parentLinkId)</th>
+        <th style="width: 35%;">題目文字 (text)</th>
+        <th style="width: 10%;">題型 (type)</th>
+        <th style="width: 20%;">選項 (answerOption)</th>
+        <th style="width: 10%;">操作</th>
+      </tr>
+    </thead>
+    <tbody id="questionTableBody">
+      <!-- 動態插入題目 -->
+    </tbody>
+  </table>
+
+  <!-- 下載按鈕 -->
+  <div class="actions-bar">
+    <button type="button" class="btn-download" onclick="downloadCSV()">💾 下載問卷 CSV 檔</button>
+  </div>
+</div>
+
+<script>
+  // 存放所有題目的陣列
+  var questionList = [];
+
+  // 控制選項欄位的顯示與隱藏
+  function toggleOptions() {
+    var type = document.getElementById('type').value;
+    var optionsParent = document.getElementById('optionsParent');
+    if (type === '單選' || type === '多選') {
+      optionsParent.style.display = 'block';
+    } else {
+      optionsParent.style.display = 'none';
+      document.getElementById('answerOption').value = ''; // 清空
+    }
+  }
+
+  // 新增題目
+  function addQuestion() {
+    var linkId = document.getElementById('linkId').value.trim();
+    var text = document.getElementById('text').value.trim();
+    var type = document.getElementById('type').value;
+    var parentLinkId = document.getElementById('parentLinkId').value.trim();
+    var answerOption = document.getElementById('answerOption').value.trim();
+
+    // 基礎防呆
+    if (!linkId || !text) {
+      alert('請填寫「題號」與「題目文字」！');
+      return;
+    }
+
+    // 檢查題號是否重複
+    var isDuplicate = questionList.some(q => q.linkId === linkId);
+    if (isDuplicate) {
+      alert('題號 (linkId) 不能重複！');
+      return;
+    }
+
+    // 儲存資料
+    questionList.push({
+      linkId: linkId,
+      parentLinkId: parentLinkId,
+      text: text,
+      type: type,
+      answerOption: answerOption
+    });
+
+    // 排序（依據題號排序，讓畫面好看一點）
+    questionList.sort((a, b) => a.linkId.localeCompare(b.linkId, undefined, {numeric: true, sensitivity: 'base'}));
+
+    // 重新渲染畫面
+    renderTable();
+
+    // 清空輸入框（保留父題號方便連續輸入子題）
+    document.getElementById('linkId').value = '';
+    document.getElementById('text').value = '';
+    document.getElementById('answerOption').value = '';
+  }
+
+  // 刪除題目
+  function deleteQuestion(index) {
+    questionList.splice(index, 1);
+    renderTable();
+  }
+
+  // 渲染表格
+  function renderTable() {
+    var tbody = document.getElementById('questionTableBody');
+    tbody.innerHTML = '';
+
+    questionList.forEach(function(q, index) {
+      var tr = document.createElement('tr');
+      
+      // 如果是群組，加上特殊樣式方便辨識
+      var typeClass = (q.type === '群組') ? 'class="group-highlight"' : '';
+      var indent = q.parentLinkId ? 'style="padding-left: 25px; color: #555;"' : '';
+
+      tr.innerHTML = `
+        <td><code>${q.linkId}</code></td>
+        <td><code>${q.parentLinkId || '-'}</code></td>
+        <td ${indent}>${q.type === '群組' ? '📁 ' : ''}${q.text}</td>
+        <td ${typeClass}>${q.type}</td>
+        <td><small>${q.answerOption || '-'}</small></td>
+        <td><button class="btn-delete" onclick="deleteQuestion(${index})">刪除</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 產生並下載 CSV
+  function downloadCSV() {
+    if (questionList.length === 0) {
+      alert('清單中還沒有任何題目喔！');
+      return;
+    }
+
+    // 定義 CSV 標頭（必須完美對應你的 HTML 讀取名稱）
+    var csvContent = "\uFEFF"; // 加入 UTF-8 BOM，確保 Excel 打開不會變亂碼
+    csvContent += "linkId,parentLinkId,text,type,answerOption\n";
+
+    // 逐行組合內容
+    questionList.forEach(function(q) {
+      // 處理欄位內容如果包含逗號或雙引號的狀況（CSV 的跳脫規則）
+      var cleanText = q.text.replace(/"/g, '""');
+      var cleanOpt = q.answerOption.replace(/"/g, '""');
+
+      var row = [
+        `"${q.linkId}"`,
+        `"${q.parentLinkId}"`,
+        `"${cleanText}"`,
+        `"${q.type}"`,
+        `"${cleanOpt}"`
+      ];
+      csvContent += row.join(",") + "\n";
+    });
+
+    // 建立下載連結
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "fhir_questionnaire_input.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8" />
+  <title>FHIR 問卷 CSV 產生器 (含複製功能)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; background-color: #f8f9fa; color: #333; }
+    .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { color: #2c3e50; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    
+    .form-group { display: flex; gap: 15px; flex-wrap: wrap; background: #e8f0fe; padding: 20px; border-radius: 8px; margin-bottom: 20px; align-items: flex-end; border: 2px solid #b4d3fe; }
+    .form-item { display: flex; flex-direction: column; gap: 5px; }
+    .form-item label { font-weight: bold; font-size: 14px; color: #495057; }
+    
+    input, select { padding: 10px 12px; border: 1px solid #ced4da; border-radius: 6px; font-size: 14px; background-color: white; }
+    input:focus, select:focus { border-color: #1c7ed6; outline: none; box-shadow: 0 0 0 3px rgba(28,126,214,0.15); }
+    
+    #text { min-width: 280px; }
+    
+    .checkbox-item { display: flex; align-items: center; gap: 8px; height: 40px; cursor: pointer; font-size: 14px; font-weight: bold; color: #495057; }
+    .checkbox-item input { width: 18px; height: 18px; cursor: pointer; margin: 0; }
+
+    button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s; font-size: 14px; }
+    .btn-add { background-color: #2b8a3e; color: white; height: 41px; }
+    .btn-add:hover { background-color: #237032; }
+    .btn-download { background-color: #1c7ed6; color: white; padding: 12px 24px; font-size: 16px; border-radius: 8px; }
+    .btn-download:hover { background-color: #1864ab; }
+    
+    /* 按鈕樣式優化 */
+    .btn-delete { background-color: #fa5252; color: white; padding: 6px 10px; font-size: 12px; border-radius: 4px; }
+    .btn-delete:hover { background-color: #e03131; }
+    .btn-copy { background-color: #fcc419; color: #212529; padding: 6px 10px; font-size: 12px; border-radius: 4px; margin-right: 5px; }
+    .btn-copy:hover { background-color: #fab005; }
+
+    /* 動態選項文字方塊的樣式 */
+    .options-container { width: 100%; margin-top: 15px; padding: 15px; background: #e9ecef; border-radius: 8px; display: none; }
+    .options-title { font-weight: bold; font-size: 14px; color: #495057; margin-bottom: 10px; }
+    .option-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+    .option-row input { flex: 1; max-width: 400px; }
+    .btn-opt-action { padding: 6px 12px; font-size: 12px; background: #6c757d; color: white; border-radius: 4px; }
+    .btn-opt-action.remove { background: #e03131; }
+    .btn-opt-action.add-more { background: #1c7ed6; margin-top: 5px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+    th { background-color: #e9ecef; color: #495057; font-weight: bold; }
+    
+    /* 讓表格行滑過時顯示可點擊的指標，並提供輕微提示色 */
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background-color: #fff9db !important; }
+    
+    .actions-bar { margin-top: 30px; text-align: right; }
+    .group-highlight { color: #1c7ed6; font-weight: bold; }
+    
+    .dynamic-field { display: none; }
+    .notice { color: #e67e22; font-size: 13px; font-weight: bold; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>FHIR 問卷 CSV 產生器</h2>
+  <div class="notice">💡 小技巧：點擊下方預覽清單中的「任何一題」或點擊「複製」，即可將該題內容快速帶回上方編輯區域！</div>
+
+  <div class="form-group">
+    <div class="form-item">
+      <label>題號 (linkId):</label>
+      <input type="text" id="linkId" placeholder="例如: 1 或 1.1" style="width: 100px;">
+    </div>
+    
+    <div class="form-item">
+      <label>題目文字 (text):</label>
+      <input type="text" id="text" placeholder="請輸入題目或大題名稱">
+    </div>
+    
+    <div class="form-item">
+      <label>題型 (type):</label>
+      <select id="type" onchange="toggleOptions()">
+        <option value="文字">文字</option>
+        <option value="數字">數字</option>
+        <option value="是非題">是非題</option>
+        <option value="單選">單選</option>
+        <option value="多選">多選</option>
+        <option value="群組">群組 (可包含子題目的外殼)</option>
+      </select>
+    </div>
+
+    <div class="form-item">
+      <label class="checkbox-item">
+        <input type="checkbox" id="isSubQuestion" onchange="toggleParentSelect()">
+        這是一題子題目
+      </label>
+    </div>
+
+    <div class="form-item dynamic-field" id="parentField">
+      <label>所屬父群組 (parentLinkId):</label>
+      <select id="parentLinkId" style="width: 200px;">
+        <option value="">-- 請選擇父群組 --</option>
+      </select>
+    </div>
+
+    <div id="optionsParent" class="options-container">
+      <div class="options-title">設定選擇題選項 (answerOption)</div>
+      <div id="optionInputsList">
+        <div class="option-row">
+          <input type="text" class="opt-input" placeholder="選項 1">
+          <button type="button" class="btn-opt-action remove" onclick="removeOptionField(this)">移除</button>
+        </div>
+        <div class="option-row">
+          <input type="text" class="opt-input" placeholder="選項 2">
+          <button type="button" class="btn-opt-action remove" onclick="removeOptionField(this)">移除</button>
+        </div>
+      </div>
+      <button type="button" class="btn-opt-action add-more" onclick="addOptionField()">＋ 增加選項</button>
+    </div>
+
+    <div style="width: 100%; text-align: right; margin-top: 15px;">
+      <button type="button" class="btn-add" onclick="addQuestion()">＋ 新增題目到清單</button>
+    </div>
+  </div>
+
+  <h3>目前問卷結構預覽</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 12%;">題號 (linkId)</th>
+        <th style="width: 15%;">父題號 (parentLinkId)</th>
+        <th style="width: 33%;">題目文字 (text)</th>
+        <th style="width: 10%;">題型 (type)</th>
+        <th style="width: 18%;">選項 (answerOption)</th>
+        <th style="width: 12%;">操作</th>
+      </tr>
+    </thead>
+    <tbody id="questionTableBody">
+      </tbody>
+  </table>
+
+  <div class="actions-bar">
+    <button type="button" class="btn-download" onclick="downloadCSV()">💾 下載問卷 CSV 檔</button>
+  </div>
+</div>
+
+<script>
+  // 存放所有題目的陣列
+  var questionList = [];
+
+  // 控制選擇題群組的顯示與隱藏
+  function toggleOptions() {
+    var type = document.getElementById('type').value;
+    var optionsParent = document.getElementById('optionsParent');
+    if (type === '單選' || type === '多選') {
+      optionsParent.style.display = 'block';
+    } else {
+      optionsParent.style.display = 'none';
+      resetOptionFields(); 
+    }
+  }
+
+  // 增加一個新的選項 Textbox
+  function addOptionField(value = '') {
+    var container = document.getElementById('optionInputsList');
+    var count = container.getElementsByClassName('option-row').length + 1;
+    
+    var div = document.createElement('div');
+    div.className = 'option-row';
+    div.innerHTML = `
+      <input type="text" class="opt-input" placeholder="選項 ${count}" value="${value}">
+      <button type="button" class="btn-opt-action remove" onclick="removeOptionField(this)">移除</button>
+    `;
+    container.appendChild(div);
+  }
+
+  // 移除特定的選項 Textbox
+  function removeOptionField(button) {
+    var row = button.parentElement;
+    var container = document.getElementById('optionInputsList');
+    if (container.getElementsByClassName('option-row').length <= 1) {
+      alert('請至少保留一個選項輸入框！');
+      return;
+    }
+    row.remove();
+  }
+
+  // 重設所有選項 Textbox
+  function resetOptionFields() {
+    var container = document.getElementById('optionInputsList');
+    container.innerHTML = `
+      <div class="option-row">
+        <input type="text" class="opt-input" placeholder="選項 1">
+        <button type="button" class="btn-opt-action remove" onclick="removeOptionField(this)">移除</button>
+      </div>
+      <div class="option-row">
+        <input type="text" class="opt-input" placeholder="選項 2">
+        <button type="button" class="btn-opt-action remove" onclick="removeOptionField(this)">移除</button>
+      </div>
+    `;
+  }
+
+  // 控制父題號下拉選單的顯示與隱藏
+  function toggleParentSelect() {
+    var isSub = document.getElementById('isSubQuestion').checked;
+    var parentField = document.getElementById('parentField');
+    if (isSub) {
+      parentField.style.display = 'block';
+    } else {
+      parentField.style.display = 'none';
+      document.getElementById('parentLinkId').value = ''; 
+    }
+  }
+
+  // 更新父題號選單庫
+  function updateParentOptions() {
+    var select = document.getElementById('parentLinkId');
+    select.innerHTML = '<option value="">-- 請選擇父群組 --</option>';
+
+    var groups = questionList.filter(q => q.type === '群組');
+    groups.forEach(function(g) {
+      var opt = document.createElement('option');
+      opt.value = g.linkId;
+      opt.innerText = `${g.linkId} (${g.text})`;
+      select.appendChild(opt);
+    });
+  }
+
+  // 【核心功能】將選定的題目複製回上方準備創建的區域
+  function copyToForm(linkId) {
+    // 從陣列中找出該筆資料
+    var item = questionList.find(q => q.linkId === linkId);
+    if (!item) return;
+
+    // 1. 填入基本欄位
+    document.getElementById('linkId').value = item.linkId;
+    document.getElementById('text').value = item.text;
+    document.getElementById('type').value = item.type;
+
+    // 2. 處理子題目與父群組下拉選單
+    if (item.parentLinkId) {
+      document.getElementById('isSubQuestion').checked = true;
+      document.getElementById('parentField').style.display = 'block';
+      document.getElementById('parentLinkId').value = item.parentLinkId;
+    } else {
+      document.getElementById('isSubQuestion').checked = false;
+      document.getElementById('parentField').style.display = 'none';
+      document.getElementById('parentLinkId').value = '';
+    }
+
+    // 3. 處理選擇題與動態 Textbox 填入值
+    var optionsParent = document.getElementById('optionsParent');
+    if (item.type === '單選' || item.type === '多選') {
+      optionsParent.style.display = 'block';
+      var container = document.getElementById('optionInputsList');
+      container.innerHTML = ''; // 清空原本的預設欄位
+
+      if (item.answerOption) {
+        var opts = item.answerOption.split(';');
+        opts.forEach(function(optVal) {
+          addOptionField(optVal); // 動態重新生成 Textbox 並填入原選項內容
+        });
+      } else {
+        resetOptionFields();
+      }
+    } else {
+      optionsParent.style.display = 'none';
+      resetOptionFields();
+    }
+
+    // 移動視窗回到上方
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // 新增題目
+  function addQuestion() {
+    var linkId = document.getElementById('linkId').value.trim();
+    var text = document.getElementById('text').value.trim();
+    var type = document.getElementById('type').value;
+    var isSub = document.getElementById('isSubQuestion').checked;
+    var parentLinkId = isSub ? document.getElementById('parentLinkId').value : '';
+    
+    var answerOption = '';
+    if (type === '單選' || type === '多選') {
+      var inputs = document.getElementsByClassName('opt-input');
+      var optArray = [];
+      for (var i = 0; i < inputs.length; i++) {
+        var val = inputs[i].value.trim();
+        if (val) optArray.push(val);
+      }
+      if (optArray.length === 0) {
+        alert('請至少填寫一個選擇題選項！');
+        return;
+      }
+      answerOption = optArray.join(';');
+    }
+
+    if (!linkId || !text) {
+      alert('請填寫「題號」與「題目文字」！');
+      return;
+    }
+
+    // 如果此題號是新加入的，才檢查重複
+    // (如果是修改原題目的狀況，我們允許蓋過去：先刪除舊的，再排入新的)
+    var existingIndex = questionList.findIndex(q => q.linkId === linkId);
+    if (existingIndex !== -1) {
+      var isConfirm = confirm(`題號 [ ${linkId} ] 已經存在。點擊「確定」將會更新此題目的內容，是否覆蓋？`);
+      if (isConfirm) {
+        questionList.splice(existingIndex, 1); // 刪除舊資料，準備塞入新修改的資料
+      } else {
+        return;
+      }
+    }
+
+    if (isSub && !parentLinkId) {
+      alert('你開啟了子題目設定，請從下拉選單選擇一個「父群組」！');
+      return;
+    }
+
+    questionList.push({
+      linkId: linkId,
+      parentLinkId: parentLinkId,
+      text: text,
+      type: type,
+      answerOption: answerOption
+    });
+
+    questionList.sort((a, b) => a.linkId.localeCompare(b.linkId, undefined, {numeric: true, sensitivity: 'base'}));
+
+    updateParentOptions();
+    renderTable();
+
+    // 清空題目輸入框並還原狀態
+    document.getElementById('linkId').value = '';
+    document.getElementById('text').value = '';
+    document.getElementById('isSubQuestion').checked = false;
+    document.getElementById('parentField').style.display = 'none';
+    document.getElementById('parentLinkId').value = '';
+    resetOptionFields();
+    document.getElementById('optionsParent').style.display = 'none';
+    document.getElementById('type').value = '文字';
+  }
+
+  // 刪除題目
+  function deleteQuestion(index, event) {
+    event.stopPropagation(); // 阻止事件冒泡，避免點擊刪除按鈕時又觸發了行複製的功能
+    questionList.splice(index, 1);
+    updateParentOptions();
+    renderTable();
+  }
+
+  // 渲染表格
+  function renderTable() {
+    var tbody = document.getElementById('questionTableBody');
+    tbody.innerHTML = '';
+
+    questionList.forEach(function(q, index) {
+      var tr = document.createElement('tr');
+      tr.className = 'clickable-row';
+      
+      // 綁定「點擊整行任一處」都能觸發複製功能
+      tr.setAttribute('onclick', `copyToForm('${q.linkId}')`);
+      
+      var typeClass = (q.type === '群組') ? 'class="group-highlight"' : '';
+      var indentStyle = q.parentLinkId ? 'style="padding-left: 25px; color: #495057; font-weight: 500;"' : '';
+      var prefix = q.type === '群組' ? '📁 ' : (q.parentLinkId ? '└ 📄 ' : '📄 ');
+
+      tr.innerHTML = `
+        <td><code>${q.linkId}</code></td>
+        <td><code>${q.parentLinkId || '-'}</code></td>
+        <td ${indentStyle}>${prefix}${q.text}</td>
+        <td ${typeClass}>${q.type}</td>
+        <td><small>${q.answerOption || '-'}</small></td>
+        <td>
+          <button class="btn-copy">複製</button>
+          <button class="btn-delete" onclick="deleteQuestion(${index}, event)">刪除</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // 下載 CSV
+  function downloadCSV() {
+    if (questionList.length === 0) {
+      alert('目前的問卷結構內還沒有任何題目喔！');
+      return;
+    }
+
+    var csvContent = "\uFEFF"; 
+    csvContent += "linkId,parentLinkId,text,type,answerOption\n";
+
+    questionList.forEach(function(q) {
+      var cleanText = q.text.replace(/"/g, '""');
+      var cleanOpt = q.answerOption.replace(/"/g, '""');
+
+      var row = [
+        `"${q.linkId}"`,
+        `"${q.parentLinkId}"`,
+        `"${cleanText}"`,
+        `"${q.type}"`,
+        `"${cleanOpt}"`
+      ];
+      csvContent += row.join(",") + "\n";
+    });
+
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "fhir_questionnaire_input.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+</script>
+
+</body>
+</html>

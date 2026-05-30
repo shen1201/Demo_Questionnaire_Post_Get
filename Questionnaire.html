@@ -64,7 +64,7 @@
               }));
             }
 
-            if (row.type === "多選") {
+            if (row.type === "多選題") {
               item.repeats = true;
             }
 
@@ -91,11 +91,11 @@
 
     function mapType(typeText) {
       switch (typeText.trim()) {
-        case "單選": return "choice";
-        case "多選": return "choice";
+        case "單選題": return "choice";
+        case "多選題": return "choice";
         case "是非題": return "boolean";
-        case "數字": return "integer";
-        case "文字": return "string";
+        case "數字題": return "integer";
+        case "文字題": return "string";
         case "群組": return "group";
         default: return "string";
       }
